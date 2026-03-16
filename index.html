@@ -53,7 +53,6 @@
       margin-bottom: 16px; color: #2e7d32;
     }
 
-    /* ホール全体 — hallを内容幅に合わせることでステージが全席にかかる */
     .hall-wrapper {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
@@ -64,7 +63,6 @@
 
     .hall { flex-shrink: 0; }
 
-    /* ステージ */
     .stage {
       background: #455a64; color: #fff;
       text-align: center; padding: 12px 0;
@@ -73,7 +71,6 @@
       margin-bottom: 20px;
     }
 
-    /* 座席エリア */
     .seat-area { display: flex; flex-direction: column; gap: 4px; }
     .seat-row  { display: flex; align-items: center; }
 
@@ -88,7 +85,6 @@
     .block  { display: flex; flex-wrap: nowrap; gap: 2px; }
     .aisle  { width: 16px; min-width: 16px; flex-shrink: 0; }
 
-    /* 座席 */
     .seat {
       width: 20px; height: 20px;
       border-radius: 3px; border: none;
@@ -104,7 +100,6 @@
     .seat.free       { background: #78909C; }
     .seat.placeholder { background: transparent; pointer-events: none; }
 
-    /* ツールチップ */
     .seat[data-tip]:hover::after {
       content: attr(data-tip);
       position: absolute; bottom: calc(100% + 4px); left: 50%;
@@ -115,7 +110,6 @@
       pointer-events: none; z-index: 10;
     }
 
-    /* 自由席区切り */
     .free-section-label {
       text-align: center; font-size: 0.78rem; font-weight: bold;
       color: #546E7A; margin: 14px 0 6px;
@@ -160,17 +154,8 @@
 <footer>5秒ごとに自動更新</footer>
 
 <script>
-  // ============================================================
-  // GAS Web アプリの URL
-  // ============================================================
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwZZaL1FnEa1oKRK6Xf2N5wHdqafaxw2t94O4w2hKFzrzdjE-Kea30ZWkQB_LaELJm4lw/exec";
 
-  // ============================================================
-  // 座席レイアウト定義
-  //   A〜G: 左(3-10), 中(11-24), 右(25-34) = 32席 / 番号3〜34
-  //   H〜O: 左(1-10), 中(11-24), 右(25-36) = 36席 / 番号1〜36
-  //   P〜W: H〜Oと同構成だが自由席（指定不可）
-  // ============================================================
   const ROWS_SHITEI = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O"];
   const ROWS_JIYU   = ["P","Q","R","S","T","U","V","W"];
 
@@ -192,23 +177,14 @@
     return arr;
   }
 
-  // ============================================================
-  // DOM 構築
-  // ============================================================
   function buildSeatDOM() {
     const area = document.getElementById("seat-area");
     area.innerHTML = "";
-
-    // 指定席 A〜O
     ROWS_SHITEI.forEach(row => area.appendChild(buildRow(row, false)));
-
-    // 自由席区切り
     const divider = document.createElement("div");
     divider.className = "free-section-label";
     divider.innerHTML = '自由席 <span>（座席番号の指定不可・当日自由着席）</span>';
     area.appendChild(divider);
-
-    // 自由席 P〜W
     ROWS_JIYU.forEach(row => area.appendChild(buildRow(row, true)));
   }
 
@@ -216,12 +192,10 @@
     const def   = getBlockDef(row);
     const rowEl = document.createElement("div");
     rowEl.className = "seat-row" + (isFree ? " row-free" : "");
-
     const label = document.createElement("div");
     label.className = "row-label";
     label.textContent = row;
     rowEl.appendChild(label);
-
     const blocksEl = document.createElement("div");
     blocksEl.className = "blocks";
     blocksEl.appendChild(buildBlock(row, def.left,   isFree));
@@ -236,7 +210,6 @@
   function buildBlock(row, blockDef, isFree) {
     const blockEl = document.createElement("div");
     blockEl.className = "block";
-
     for (let i = 0; i < (blockDef.spacersBefore || 0); i++) {
       blockEl.appendChild(makePlaceholder());
     }
@@ -251,7 +224,6 @@
     for (let i = 0; i < (blockDef.spacersAfter || 0); i++) {
       blockEl.appendChild(makePlaceholder());
     }
-
     return blockEl;
   }
 
@@ -267,16 +239,12 @@
     return el;
   }
 
-  // ============================================================
-  // データ取得・更新
-  // ============================================================
   let lastData = null;
 
   async function fetchSeats() {
     const spinner  = document.getElementById("spinner");
     const errorMsg = document.getElementById("error-msg");
     spinner.classList.add("active");
-
     try {
       const res = await fetch(GAS_API_URL, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -293,14 +261,11 @@
   }
 
   function applySeats(data) {
-    // 指定席のみリセット（自由席・プレースホルダーは除外）
     document.querySelectorAll(".seat.available, .seat.reserved").forEach(el => {
       el.className = "seat available";
     });
-
     let totalSeats = 0;
     let reservedCount = 0;
-
     data.seats.forEach(s => {
       const el = document.getElementById(`seat-${s.row}-${s.seat_number}`);
       if (!el) return;
@@ -310,19 +275,14 @@
         reservedCount++;
       }
     });
-
     const available = totalSeats - reservedCount;
     document.getElementById("seat-count").textContent =
       `残り ${available} 席 / 全 ${totalSeats} 席（指定席）`;
-
     const dt = new Date(data.updated_at);
     document.getElementById("updated-at").textContent =
       `最終更新：${dt.toLocaleString("ja-JP")}`;
   }
 
-  // ============================================================
-  // 起動
-  // ============================================================
   buildSeatDOM();
   fetchSeats();
   setInterval(fetchSeats, 5000);
