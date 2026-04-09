@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>伊都文化会館 大ホール 空席情報</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Hiragino Sans", "Meiryo", sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    header { text-align: center; margin-bottom: 16px; }
+    header h1 { font-size: 1.4rem; font-weight: bold; margin-bottom: 6px; }
+
+    .status-bar {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; font-size: 0.82rem; color: #555; flex-wrap: wrap;
+    }
+
+    .spinner {
+      display: none; width: 13px; height: 13px;
+      border: 2px solid #ccc; border-top-color: #555;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    .spinner.active { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      display: none; background: #ffebee; color: #c62828;
+      border: 1px solid #ef9a9a; border-radius: 6px;
+      padding: 8px 14px; text-align: center; font-size: 0.82rem; margin-bottom: 10px;
+    }
+    .error-msg.visible { display: block; }
+
+    .legend {
+      display: flex; justify-content: center; gap: 16px;
+      margin-bottom: 10px; font-size: 0.82rem; flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-box { width: 16px; height: 16px; border-radius: 3px; }
+    .legend-box.available    { background: #4CAF50; }
+    .legend-box.consignment  { background: #FF9800; }
+    .legend-box.reserved     { background: #9E9E9E; }
+    .legend-box.free         { background: #78909C; }
+
+    .seat-count {
+      text-align: center; font-size: 1rem; font-weight: bold;
+      margin-bottom: 16px; color: #2e7d32;
+    }
+
+    /* ホール全体 — hallを内容幅に合わせることでステージが全席にかかる */
+    .hall-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 16px;
+    }
+
+    .hall { width: fit-content; margin: 0 auto; }
+
+    /* ステージ */
+    .stage {
+      background: #455a64; color: #fff;
+      text-align: center; padding: 12px 0;
+      border-radius: 6px 6px 0 0;
+      font-size: 0.95rem; letter-spacing: 0.15em;
+      margin-bottom: 20px;
+    }
+
+    /* 座席エリア */
+    .seat-area { display: flex; flex-direction: column; gap: 4px; }
+    .seat-row  { display: flex; align-items: center; }
+
+    .row-label {
+      width: 20px; min-width: 20px;
+      font-size: 0.72rem; font-weight: bold;
+      text-align: center; color: #555; user-select: none;
+    }
+    .row-free .row-label { color: #546E7A; }
+
+    .blocks { display: flex; align-items: center; }
+    .block  { display: flex; flex-wrap: nowrap; gap: 2px; }
+    .aisle  { width: 16px; min-width: 16px; flex-shrink: 0; }
+
+    /* 座席 */
+    .seat {
+      width: 20px; height: 20px;
+      border-radius: 3px; border: none;
+      cursor: default; position: relative;
+      transition: filter 0.15s; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 7px; font-weight: bold;
+      color: rgba(255,255,255,0.9); user-select: none;
+    }
+    .seat.available     { background: #4CAF50; }
+    .seat.available:hover { filter: brightness(1.15); }
+    .seat.consignment   { background: #FF9800; }
+    .seat.consignment:hover { filter: brightness(1.1); }
+    .seat.reserved      { background: #9E9E9E; }
+    .seat.free          { background: #78909C; }
+    .seat.placeholder   { background: transparent; pointer-events: none; }
+
+    /* ツールチップ */
+    .seat[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 4px); left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75); color: #fff;
+      font-size: 0.68rem; white-space: nowrap;
+      padding: 2px 6px; border-radius: 3px;
+      pointer-events: none; z-index: 10;
+    }
+
+    /* 自由席区切り */
+    .free-section-label {
+      text-align: center; font-size: 0.78rem; font-weight: bold;
+      color: #546E7A; margin: 14px 0 6px;
+      padding-top: 10px;
+      border-top: 2px dashed #90A4AE;
+    }
+    .free-section-label span { font-weight: normal; color: #78909C; }
+
+    footer {
+      text-align: center; margin-top: 24px;
+      font-size: 0.72rem; color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>伊都文化会館 大ホール 空席情報</h1>
+  <div class="status-bar">
+    <span id="updated-at">読み込み中...</span>
+    <span class="spinner" id="spinner"></span>
+  </div>
+</header>
+
+<div class="error-msg" id="error-msg"></div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-box available"></div><span>空席（指定席）</span></div>
+  <div class="legend-item"><div class="legend-box consignment"></div><span>空席（委託）</span></div>
+  <div class="legend-item"><div class="legend-box reserved"></div><span>予約済（指定席）</span></div>
+  <div class="legend-item"><div class="legend-box free"></div><span>自由席</span></div>
+</div>
+
+<div class="seat-count" id="seat-count">－</div>
+
+<div class="hall-wrapper">
+  <div class="hall">
+    <div class="stage">▲ ステージ（舞台）</div>
+    <div class="seat-area" id="seat-area"></div>
+  </div>
+</div>
+
+<footer>5秒ごとに自動更新</footer>
+
+<script>
+  // ============================================================
+  // GAS Web アプリの URL
+  // ============================================================
+  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwZZaL1FnEa1oKRK6Xf2N5wHdqafaxw2t94O4w2hKFzrzdjE-Kea30ZWkQB_LaELJm4lw/exec";
+
+  // ============================================================
+  // 座席レイアウト定義
+  //   A〜G: 左(3-10), 中(11-24), 右(25-34) = 32席 / 番号3〜34
+  //   H〜O: 左(1-10), 中(11-24), 右(25-36) = 36席 / 番号1〜36
+  //   P〜W: H〜Oと同構成だが自由席（指定不可）
+  // ============================================================
+  const ROWS_SHITEI = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O"];
+  const ROWS_JIYU   = ["P","Q","R","S","T","U","V","W"];
+
+  function getBlockDef(row) {
+    const isAG = ["A","B","C","D","E","F","G"].includes(row);
+    return {
+      left:   { seats: isAG ? range(3, 10)  : range(1, 10),
+                spacersBefore: isAG ? 2 : 0, spacersAfter: 0 },
+      center: { seats: range(11, 24),
+                spacersBefore: 0, spacersAfter: 0 },
+      right:  { seats: isAG ? range(25, 34) : range(25, 36),
+                spacersBefore: 0, spacersAfter: isAG ? 2 : 0 }
+    };
+  }
+
+  function range(start, end) {
+    const arr = [];
+    for (let i = start; i <= end; i++) arr.push(i);
+    return arr;
+  }
+
+  // ============================================================
+  // DOM 構築
+  // ============================================================
+  function buildSeatDOM() {
+    const area = document.getElementById("seat-area");
+    area.innerHTML = "";
+
+    // 指定席 A〜O
+    ROWS_SHITEI.forEach(row => area.appendChild(buildRow(row, false)));
+
+    // 自由席区切り
+    const divider = document.createElement("div");
+    divider.className = "free-section-label";
+    divider.innerHTML = '自由席 <span>（座席番号の指定不可・当日自由着席）</span>';
+    area.appendChild(divider);
+
+    // 自由席 P〜W
+    ROWS_JIYU.forEach(row => area.appendChild(buildRow(row, true)));
+  }
+
+  function buildRow(row, isFree) {
+    const def   = getBlockDef(row);
+    const rowEl = document.createElement("div");
+    rowEl.className = "seat-row" + (isFree ? " row-free" : "");
+
+    const label = document.createElement("div");
+    label.className = "row-label";
+    label.textContent = row;
+    rowEl.appendChild(label);
+
+    const blocksEl = document.createElement("div");
+    blocksEl.className = "blocks";
+    blocksEl.appendChild(buildBlock(row, def.left,   isFree));
+    blocksEl.appendChild(buildAisle());
+    blocksEl.appendChild(buildBlock(row, def.center, isFree));
+    blocksEl.appendChild(buildAisle());
+    blocksEl.appendChild(buildBlock(row, def.right,  isFree));
+    rowEl.appendChild(blocksEl);
+    return rowEl;
+  }
+
+  function buildBlock(row, blockDef, isFree) {
+    const blockEl = document.createElement("div");
+    blockEl.className = "block";
+
+    for (let i = 0; i < (blockDef.spacersBefore || 0); i++) {
+      blockEl.appendChild(makePlaceholder());
+    }
+    blockDef.seats.forEach(seatNum => {
+      const btn = document.createElement("div");
+      btn.className   = isFree ? "seat free" : "seat available";
+      btn.dataset.tip = isFree ? `${row}列 自由席` : `${row}-${seatNum}`;
+      if (!isFree) btn.id = `seat-${row}-${seatNum}`;
+      btn.textContent = String(seatNum);
+      blockEl.appendChild(btn);
+    });
+    for (let i = 0; i < (blockDef.spacersAfter || 0); i++) {
+      blockEl.appendChild(makePlaceholder());
+    }
+
+    return blockEl;
+  }
+
+  function makePlaceholder() {
+    const sp = document.createElement("div");
+    sp.className = "seat placeholder";
+    return sp;
+  }
+
+  function buildAisle() {
+    const el = document.createElement("div");
+    el.className = "aisle";
+    return el;
+  }
+
+  // ============================================================
+  // データ取得・更新
+  // ============================================================
+  let lastData = null;
+
+  async function fetchSeats() {
+    const spinner  = document.getElementById("spinner");
+    const errorMsg = document.getElementById("error-msg");
+    spinner.classList.add("active");
+
+    try {
+      const res = await fetch(GAS_API_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      lastData = data;
+      applySeats(data);
+      errorMsg.classList.remove("visible");
+    } catch (err) {
+      errorMsg.textContent = `データ取得に失敗しました（${err.message}）。最後に取得したデータを表示しています。`;
+      errorMsg.classList.add("visible");
+    } finally {
+      spinner.classList.remove("active");
+    }
+  }
+
+  function applySeats(data) {
+    // 指定席のみリセット（自由席・プレースホルダーは除外）
+    document.querySelectorAll(".seat.available, .seat.reserved, .seat.consignment").forEach(el => {
+      el.className = "seat available";
+    });
+
+    let totalSeats = 0;
+    let reservedCount = 0;
+
+    data.seats.forEach(s => {
+      const el = document.getElementById(`seat-${s.row}-${s.seat_number}`);
+      if (!el) return;
+      totalSeats++;
+      const status = s.status ?? (s.reserved ? "予約済み" : "空席");
+      if (status === "委託") {
+        el.className = "seat consignment";
+        el.dataset.tip = `${s.row}-${s.seat_number}（委託販売席）`;
+      } else if (status === "予約済み") {
+        el.className = "seat reserved";
+        reservedCount++;
+      } else {
+        el.dataset.tip = `${s.row}-${s.seat_number}`;
+      }
+    });
+
+    const available = totalSeats - reservedCount;
+    document.getElementById("seat-count").textContent =
+      `残り ${available} 席 / 全 ${totalSeats} 席（指定席）`;
+
+    const dt = new Date(data.updated_at);
+    document.getElementById("updated-at").textContent =
+      `最終更新：${dt.toLocaleString("ja-JP")}`;
+  }
+
+  // ============================================================
+  // 起動
+  // ============================================================
+  buildSeatDOM();
+  fetchSeats();
+  setInterval(fetchSeats, 5000);
+</script>
+</body>
+</html>
